@@ -43,7 +43,7 @@
     "Intensity-tiles": {
       "type": "raster",
       "tiles": [
-        "pmtiles://https://nnkhij.github.io/NepalMMS/data/Intensity.pmtiles/{z}/{x}/{y}.png"
+        "pmtiles://https://nnkhij.github.io/NepalMMS2/data/Intensity.pmtiles/{z}/{x}/{y}.png"
       ],
       "minzoom": 12,
       "maxzoom": 20,
@@ -52,7 +52,7 @@
     "trj-source": {
       "type": "vector",
       "tiles": [
-        "pmtiles://https://nnkhij.github.io/NepalMMS/data/trj.pmtiles/{z}/{x}/{y}"
+        "pmtiles://https://nnkhij.github.io/NepalMMS2/data/trj.pmtiles/{z}/{x}/{y}"
       ],
       "minzoom": 4,
       "maxzoom": 16
