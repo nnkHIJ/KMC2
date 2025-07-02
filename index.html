@@ -1,0 +1,540 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nepal_Biz_ver001</title>
+    <link href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" rel="stylesheet"/>
+    <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.2/mapbox-gl-draw.css" rel="stylesheet" />
+    <style>
+        body {
+            background-color: #000;
+        }
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            padding: 10px;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            z-index: 1 !important; /* ← ここをDrawより下に */
+        }
+        .disp-layers {
+            background-color: #fff;
+            margin: 3px 0 0 0;
+            padding: 6px;
+        }
+        .disp-layers label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 2px;
+        }
+        #controls button {
+            margin-right: 4px;
+        }
+        #zoom-level {
+            position: absolute;
+            bottom: 10px;
+            left: 50px;
+            background-color: white;
+            padding: 5px;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            z-index: 2;
+        }
+        #note-display {
+            display: none;
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            white-space: nowrap;
+            z-index: 1001;
+        }
+        #properties-display {
+            position: absolute;
+            background: white;
+            padding: 5px;
+            border: 1px solid black;
+            display: none;
+            z-index: 1000;
+            max-width: 220px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        #properties-display table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        #properties-display td {
+            padding: 2px 5px;
+            word-break: break-all;
+        }
+        #properties-display tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        /* -- Drawボタンを常に前面・クリック可能に -- */
+        .maplibregl-ctrl-top-left,
+        .mapboxgl-ctrl-top-left {
+            z-index: 10000 !important;
+        }
+        .mapbox-gl-draw_ctrl-draw-btn {
+            pointer-events: auto !important;
+            z-index: 10001 !important;
+        }
+        .maplibregl-canvas.mapbox-gl-draw_polygon,
+        .maplibregl-canvas.mapbox-gl-draw_line_string,
+        .maplibregl-canvas.mapbox-gl-draw_line,
+        .maplibregl-canvas.mapbox-gl-draw_point,
+        .mapboxgl-canvas.mapbox-gl-draw_polygon,
+        .mapboxgl-canvas.mapbox-gl-draw_line_string,
+        .mapboxgl-canvas.mapbox-gl-draw_line,
+        .mapboxgl-canvas.mapbox-gl-draw_point {
+            cursor: default !important;
+        }
+        .maplibregl-canvas,
+        .mapboxgl-canvas {
+            cursor: default !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="controls">
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+            <button id="my-location-btn" title="現在地">📍</button>
+            <button id="stop-follow-btn" title="自動追従停止" disabled>⏹️</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <button id="export-geojson-btn">Export</button>
+            <button id="import-geojson-btn">Import</button>
+            <input type="file" id="import-geojson-input" accept=".geojson,.json" style="display:none;">
+        </div>
+        <div style="margin-bottom:6px;">
+            <button id="toggle-layers-btn" style="width:130px;">
+                Layer On/Off ▼
+            </button>
+            <div id="layers-container" class="disp-layers" style="display: none;">
+                <label><input type="checkbox" id="osm-layer-chk" checked> Open Street Map</label>
+               <!--  <label><input type="checkbox" id="trj-layer-chk"> Trajectory</label>　-->
+                <label><input type="checkbox" id="Higher-layer-chk"> Higher data</label>
+                <label><input type="checkbox" id="Lower-layer-chk" checked> Lower data</label>
+               <!--  <label><input type="checkbox" id="kifuku-layer-chk"> SFD</label>　-->
+               <!--   <label><input type="checkbox" id="Intensity-layer-chk"> Intensity</label>　-->
+                <div id="attributes" style="margin-top:6px;"></div>
+            </div>
+        </div>
+        <div id="note-form" style="display: none; margin-top: 16px; padding:6px 0;">
+            <label for="note-text">Memo:</label>
+            <input type="text" id="note-text" style="width:100px;"/>
+            <button id="save-note-btn">Write</button>
+        </div>
+        <div id="note-display" style="display: none;">
+            <div id="note-content"></div>
+        </div>
+    </div>
+    <div id="zoom-level">Zoom: 12</div>
+    <div id="properties-display"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf/turf.min.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pmtiles/dist/pmtiles.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.2/mapbox-gl-draw.js"></script>
+    <script>
+        const protocol = new pmtiles.Protocol();
+        maplibregl.addProtocol('pmtiles', protocol.tile);
+
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: 'style.json', // ★ 本運用では必ずstyle.jsonが存在していることを確認してください
+            center: [85.37, 27.73],
+            zoom: 16,
+            maxZoom: 24 
+        });
+
+        map.addControl(new maplibregl.NavigationControl());
+
+        const draw = new MapboxDraw({
+            displayControlsDefault: false,
+            controls: {
+                point: true,
+                line_string: true,
+                polygon: true,
+                trash: true
+            }
+        });
+
+        map.addControl(draw, 'top-right');
+
+        // Export/Import
+        document.getElementById('export-geojson-btn').addEventListener('click', function() {
+            const data = draw.getAll();
+            data.features.forEach(f => {
+                if (f.geometry.type === 'LineString') {
+                    const length_km = turf.length(f, {units: 'kilometers'});
+                    const length_m = length_km * 1000;
+                    f.properties.distance_m = Number(length_m.toFixed(2));
+                }
+                if (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
+                    const area = turf.area(f);
+                    f.properties.area_m2 = Number(area.toFixed(2));
+                }
+            });
+            const geojsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([geojsonStr], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'drawings.geojson';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+        document.getElementById('import-geojson-btn').addEventListener('click', function() {
+            document.getElementById('import-geojson-input').click();
+        });
+        document.getElementById('import-geojson-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const geojson = JSON.parse(event.target.result);
+                    draw.deleteAll();
+                    if (geojson.type === 'FeatureCollection') {
+                        geojson.features.forEach(f => draw.add(f));
+                    } else if (geojson.type === 'Feature') {
+                        draw.add(geojson);
+                    } else {
+                        alert('GeoJSONの形式が正しくありません');
+                        return;
+                    }
+                    alert('インポート完了');
+                } catch(err) {
+                    alert('GeoJSONの読み込みに失敗しました');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = "";
+        });
+
+        // レイヤーリスト
+        const layerIds = [
+            'osm-layer',
+            <!-- 'trj-layer',　-->
+            <!-- 'kifuku-layer',　-->
+            'Higher-layer',
+            'Lower-layer',
+            <!-- 'Intensity-layer'　-->
+        ];
+        document.querySelector('#toggle-layers-btn').addEventListener('click', () => {
+            const layersContainer = document.getElementById('layers-container');
+            if (layersContainer.style.display === 'none' || layersContainer.style.display === '') {
+                layersContainer.style.display = 'block';
+            } else {
+                layersContainer.style.display = 'none';
+            }
+        });
+        const toggleLayer = (id) => {
+            const isChecked = document.getElementById(`${id}-chk`).checked;
+            if (map.getLayer(id)) {
+                map.setLayoutProperty(id, 'visibility', isChecked ? 'visible' : 'none');
+            }
+        };
+        layerIds.forEach(lyrId => {
+            document.querySelector(`#${lyrId}-chk`).addEventListener('change', () => {
+                toggleLayer(lyrId);
+            });
+        });
+
+map.on('load', function() {
+    layerIds.forEach(lyrId => {
+        const chk = document.getElementById(`${lyrId}-chk`);
+        if (lyrId === 'kifuku-layer') {
+            if (map.getLayer(lyrId)) {
+                map.setLayoutProperty(lyrId, 'visibility', 'none');
+            }
+            if (chk) chk.checked = false;
+        } else if (chk && map.getLayer(lyrId)) {
+            map.setLayoutProperty(lyrId, 'visibility', chk.checked ? 'visible' : 'none');
+        }
+    });
+});
+
+        const updateZoomLevel = () => {
+            const zoom = map.getZoom().toFixed(2);
+            document.getElementById('zoom-level').innerText = `Zoom: ${zoom}`;
+        };
+        map.on('zoom', updateZoomLevel);
+        updateZoomLevel();
+
+        // Note関連
+        let selectedFeatureId;
+        document.getElementById('save-note-btn').addEventListener('click', () => {
+            const noteText = document.getElementById('note-text').value;
+            if (selectedFeatureId) {
+                draw.setFeatureProperty(selectedFeatureId, 'note', noteText);
+                document.getElementById('note-form').style.display = 'none';
+            }
+        });
+        map.on('draw.create', function (e) {
+            const feature = e.features[0];
+            if (feature.geometry.type === 'Point') {
+                selectedFeatureId = feature.id;
+                document.getElementById('note-text').value = '';
+                document.getElementById('note-form').style.display = 'block';
+            }
+            if (feature.geometry.type === 'LineString') {
+                const length_km = turf.length(feature, {units: 'kilometers'});
+                const length_m = length_km * 1000;
+                draw.setFeatureProperty(feature.id, 'distance_m', Math.round(length_m));
+            }
+            if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
+                const area = turf.area(feature);
+                draw.setFeatureProperty(feature.id, 'area_m2', Math.round(area));
+            }
+        });
+        map.on('draw.update', function (e) {
+            const feature = e.features[0];
+            if (feature.geometry.type === 'Point') {
+                selectedFeatureId = feature.id;
+                document.getElementById('note-text').value = '';
+                document.getElementById('note-form').style.display = 'block';
+            }
+            if (feature.geometry.type === 'LineString') {
+                const length_km = turf.length(feature, {units: 'kilometers'});
+                const length_m = length_km * 1000;
+                draw.setFeatureProperty(feature.id, 'distance_m', Math.round(length_m));
+            }
+            if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
+                const area = turf.area(feature);
+                draw.setFeatureProperty(feature.id, 'area_m2', Math.round(area));
+            }
+        });
+
+        function updateNoteDisplayPosition(lngLat) {
+            const noteDisplay = document.getElementById('note-display');
+            const point = map.project(lngLat);
+            noteDisplay.style.left = `${point.x + 10}px`;
+            noteDisplay.style.top = `${point.y - 10}px`;
+        }
+        let noteLngLat = null;
+
+        // 各要素に個別Popup
+        let customPopups = [];
+        function showNearbyGeometriesPopups(lngLat) {
+            if (customPopups.length) {
+                customPopups.forEach(p => p.remove());
+                customPopups = [];
+            }
+            const threshold = 30;
+            const geojson = draw.getAll();
+            const pt = turf.point([lngLat.lng, lngLat.lat]);
+            // ライン
+            const lineFeatures = geojson.features.filter(f => f.geometry.type === 'LineString');
+            lineFeatures.forEach(feature => {
+                const nearest = turf.nearestPointOnLine(feature, pt, {units: 'meters'});
+                if (nearest.properties.dist <= threshold) {
+                    const length_km = turf.length(feature, {units: 'kilometers'});
+                    const length_m = length_km * 1000;
+                    const popup = new maplibregl.Popup({closeOnClick: false})
+                        .setLngLat(nearest.geometry.coordinates)
+                        .setHTML(`${length_m.toFixed(2)} m`)
+                        .addTo(map);
+                    customPopups.push(popup);
+                }
+            });
+            // ポリゴン
+            const polygonFeatures = geojson.features.filter(f => f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon');
+            polygonFeatures.forEach(feature => {
+                const inside = turf.booleanPointInPolygon(pt, feature);
+                let willShow = false, coords;
+                if (inside) {
+                    willShow = true;
+                    coords = [lngLat.lng, lngLat.lat];
+                } else {
+                    const centroid = turf.centroid(feature).geometry.coordinates;
+                    const dist = turf.distance(pt, turf.point(centroid), {units: 'meters'});
+                    if (dist <= threshold) {
+                        willShow = true;
+                        coords = centroid;
+                    }
+                }
+                if (willShow) {
+                    const area = turf.area(feature);
+                    const popup = new maplibregl.Popup({closeOnClick: false})
+                        .setLngLat(coords)
+                        .setHTML(`${area.toFixed(2)} m²`)
+                        .addTo(map);
+                    customPopups.push(popup);
+                }
+            });
+        }
+
+        let lastLineDistancePosition = null;
+        function handleMapClick(e) {
+            // ノート機能
+            const features = draw.getAll().features.filter(feature => feature.geometry.type === 'Point');
+            if (features.length > 0) {
+                const nearestFeature = features.reduce((nearest, feature) => {
+                    const distance = turf.distance(
+                        turf.point(feature.geometry.coordinates),
+                        turf.point([e.lngLat.lng, e.lngLat.lat])
+                    );
+                    return distance < nearest.distance ? { feature, distance } : nearest;
+                }, { feature: null, distance: Infinity });
+
+                if (nearestFeature.feature) {
+                    noteLngLat = nearestFeature.feature.geometry.coordinates;
+                    updateNoteDisplayPosition(noteLngLat);
+                    const note = nearestFeature.feature.properties.note || ' ';
+                    document.getElementById('note-content').innerText = note;
+                    document.getElementById('note-display').style.display = 'block';
+                } else {
+                    document.getElementById('note-display').style.display = 'none';
+                }
+            } else {
+                document.getElementById('note-display').style.display = 'none';
+            }
+
+            showNearbyGeometriesPopups(e.lngLat);
+            lastLineDistancePosition = {lngLat: e.lngLat, point: e.point};
+
+            // === 属性情報の表示: ±10px範囲内の"draw系を除外した"featureのみ ===
+            const r = 10;
+            const bbox = [
+                [e.point.x - r, e.point.y - r],
+                [e.point.x + r, e.point.y + r]
+            ];
+            const allFeatures = map.queryRenderedFeatures(bbox);
+            // draw系レイヤを排除
+            const filteredFeatures = allFeatures.filter(f =>
+                f.layer && !/^gl-draw-/.test(f.layer.id)
+            );
+            if (filteredFeatures.length) {
+                displayFeatureProperties(filteredFeatures[0].properties, e.point);
+            } else {
+                hideFeatureProperties();
+            }
+        }
+        map.on('click', handleMapClick);
+
+        // ★ 追加：スマホでもタップで各種情報が表示されるように
+        map.on('touchend', function(e) {
+            // 1本指、短タップのみ（ピンチやスワイプ排除）
+            if (e.points && e.points.length === 1) {
+                const point = (e.points && e.points[0]) || e.point;
+                const lngLat = (e.lngLats && e.lngLats[0]) || e.lngLat;
+                handleMapClick({ point, lngLat, preventDefault: ()=>{} });
+            }
+        });
+
+        map.on('zoom', () => {
+            if (noteLngLat) updateNoteDisplayPosition(noteLngLat);
+        });
+        map.on('move', () => {
+            if (noteLngLat) updateNoteDisplayPosition(noteLngLat);
+        });
+
+        // 属性情報パネル
+        function displayFeatureProperties(properties, point) {
+            const propertiesDisplay = document.getElementById('properties-display');
+            if (!propertiesDisplay) return;
+            let propertiesHtml = '<table>';
+            for (const key in properties) {
+                propertiesHtml += `<tr><td><strong>${key}</strong>:</td><td>${properties[key]}</td></tr>`;
+            }
+            propertiesHtml += '</table>';
+            propertiesDisplay.innerHTML = propertiesHtml;
+            propertiesDisplay.style.display = 'block';
+            propertiesDisplay.style.left = `${point.x + 10}px`;
+            propertiesDisplay.style.top = `${point.y + 10}px`;
+        }
+        function hideFeatureProperties() {
+            const propertiesDisplay = document.getElementById('properties-display');
+            propertiesDisplay.style.display = 'none';
+        }
+        // PC: 右クリックで非表示
+        map.on('contextmenu', (e) => {
+            hideFeatureProperties();
+        });
+        // モバイル: 長押しで非表示
+        let longTouchTimer = null;
+        map.on('touchstart', function(e) {
+            if (longTouchTimer) clearTimeout(longTouchTimer);
+            longTouchTimer = setTimeout(function() {
+                hideFeatureProperties();
+            }, 600);
+        });
+        map.on('touchend', function(e) {
+            if (longTouchTimer) clearTimeout(longTouchTimer);
+        });
+        map.on('touchmove', function(e) {
+            if (longTouchTimer) clearTimeout(longTouchTimer);
+        });
+
+        let watchId = null;
+        let following = false;
+        const btnFollow = document.getElementById('my-location-btn');
+        const btnStop = document.getElementById('stop-follow-btn');
+        btnFollow.addEventListener('click', function() {
+            if ('geolocation' in navigator) {
+                if (watchId !== null) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+                let first = true;
+                following = true;
+                btnFollow.disabled = true;
+                btnStop.disabled = false;
+                watchId = navigator.geolocation.watchPosition(
+                    function(position) {
+                        const lng = position.coords.longitude;
+                        const lat = position.coords.latitude;
+                        if (window.myLocationMarker) {
+                            window.myLocationMarker.setLngLat([lng, lat]);
+                        } else {
+                            window.myLocationMarker = new maplibregl.Marker({color:"blue"})
+                                .setLngLat([lng, lat])
+                                .addTo(map);
+                        }
+                        if (first) {
+                            map.flyTo({center: [lng, lat], zoom: 17});
+                            first = false;
+                        } else {
+                            map.jumpTo({center: [lng, lat]});
+                        }
+                    },
+                    function(error) {
+                        alert('位置情報の取得に失敗しました: ' + error.message);
+                        following = false;
+                        btnFollow.disabled = false;
+                        btnStop.disabled = true;
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            } else {
+                alert('この端末では位置情報が利用できません。');
+            }
+        });
+        btnStop.addEventListener('click', function() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            following = false;
+            btnFollow.disabled = false;
+            btnStop.disabled = true;
+        });
+    </script>
+</body>
+</html>
